@@ -1,134 +1,170 @@
-"""Project 06 — Export MongoDB -> GCS (JSONL.gz, chunk) để Cloud Function load vào BigQuery.
-
-Chạy TRÊN VM (cạnh MongoDB, nhanh hơn nhiều so với kéo về local):
-    uv run python scripts/export_to_gcs.py --source events       --bucket <BUCKET>
-    uv run python scripts/export_to_gcs.py --source ip_locations --bucket <BUCKET>
-    uv run python scripts/export_to_gcs.py --source products     --bucket <BUCKET>
-
-File đích: gs://<BUCKET>/staging/<source>/incoming/<run_id>/part-00000.jsonl.gz
--> Cloud Function thấy file mới -> load vào raw.<source>.
-
-- Raw layer: events giữ vài cột chính dạng STRING + `payload` = nguyên document (JSON string).
-  Lý do: `option` lúc là object lúc là array, kiểu dữ liệu không nhất quán -> ép schema cứng là
-  load fail. Ép kiểu để ở dbt staging (schema-on-read).
-- ip_locations / products: chỉ xuất đúng các cột trong schemas/<source>.json. Field thừa trong Mongo
-  (vd. products._loaded_at) sẽ bị bỏ, vì Cloud Function load với ignore_unknown_values=False.
-- Resume: manifest lưu last _id của mỗi chunk đã upload. Chết giữa chừng -> chạy lại cùng --run-id.
-  Upload dùng if_generation_match=0: file đã có trên GCS thì không ghi đè (tránh Cloud Function load trùng).
 """
-from __future__ import annotations
+Project 06 - Step 1: Export MongoDB collections -> GCS (JSONL.gz, chia part)
 
-import argparse
+Usage (trên VM):
+    uv run python export_to_gcs.py summary ip_locations products
+
+- Đọc theo _id range (không dùng skip) -> RAM thấp, resume được khi bị ngắt
+- Mỗi part = PART_SIZE docs -> ghi /tmp -> upload GCS -> xoá file local
+- Trạng thái lưu ở export_state.json -> chạy lại lệnh sẽ tiếp tục từ chỗ dừng
+"""
 import gzip
 import json
-from datetime import datetime, timezone
-from time import perf_counter
+import logging
+import os
+import re
+import sys
+import time
+from datetime import datetime
 
-from bson import json_util
-from google.api_core.exceptions import PreconditionFailed
+from bson import Decimal128, ObjectId, json_util
 from google.cloud import storage
+from pymongo import MongoClient
 
-from common import EVENTS_COLLECTION, OUTPUT_DIR, db, log, now_iso, schema_fields, to_str
+# ---------- Config (override bằng biến môi trường) ----------
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+MONGO_DB = os.getenv("MONGO_DB", "glamira")
+GCS_BUCKET = os.getenv("GCS_BUCKET", "glamira-raw-data-asia")  # sửa tên bucket của bạn
+GCS_PREFIX = os.getenv("GCS_PREFIX", "raw")
+PART_SIZE = int(os.getenv("PART_SIZE", "1000000"))  # 1M docs/part ~ 100-200MB gz
+TMP_DIR = os.getenv("TMP_DIR", "/tmp/glamira_export")
+STATE_FILE = "export_state.json"
 
-EVENT_FIELDS = [
-    "collection", "time_stamp", "local_time", "ip", "user_agent", "resolution",
-    "user_id_db", "device_id", "api_version", "store_id", "current_url", "referrer_url",
-    "email_address", "product_id", "viewing_product_id", "order_id", "cat_id", "collect_id",
-]
-SOURCES = {  # source -> mongo collection
-    "events": None,  # dùng EVENTS_COLLECTION
-    "ip_locations": "ip_locations",
-    "products": "products",
-}
+os.makedirs(TMP_DIR, exist_ok=True)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s",
+    handlers=[logging.FileHandler("export_to_gcs.log"), logging.StreamHandler(sys.stdout)],
+)
+log = logging.getLogger("export")
 
-
-def transform(source: str, doc: dict, run_id: str, exported_at: str, fields: list[str]) -> dict:
-    if source == "events":
-        row = {"event_id": str(doc["_id"])}
-        row.update({f: to_str(doc.get(f)) for f in EVENT_FIELDS})
-        row["payload"] = json.dumps(doc, default=str, ensure_ascii=False)
-    else:
-        row = {k: to_str(doc.get(k)) for k in fields}
-    row["_run_id"] = run_id
-    row["_exported_at"] = exported_at
-    return row
+_INVALID_KEY = re.compile(r"[^A-Za-z0-9_]")
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--source", choices=SOURCES, required=True)
-    ap.add_argument("--bucket", required=True)
-    ap.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S"))
-    ap.add_argument("--chunk-size", type=int, default=250_000)
-    ap.add_argument("--max-chunks", type=int, default=None, help="test: --max-chunks 1")
-    args = ap.parse_args()
+def clean_key(k: str) -> str:
+    """BigQuery column name: chỉ chữ/số/_, không bắt đầu bằng số."""
+    k = _INVALID_KEY.sub("_", str(k))
+    return f"_{k}" if k and k[0].isdigit() else k
 
-    col = db()[SOURCES[args.source] or EVENTS_COLLECTION]
-    bucket = storage.Client().bucket(args.bucket)
-    prefix = f"staging/{args.source}/incoming/{args.run_id}"
-    fields = [f for f in schema_fields(args.source) if not f.startswith("_")]
 
-    manifest_path = OUTPUT_DIR / f"export_{args.source}_{args.run_id}.json"
-    manifest = (json.loads(manifest_path.read_text()) if manifest_path.exists()
-                else {"run_id": args.run_id, "source": args.source, "chunks": []})
-    chunk_no = len(manifest["chunks"])
-    # last_id lưu bằng json_util để giữ đúng kiểu (ObjectId) khi resume
-    last_id = json_util.loads(manifest["chunks"][-1]["last_id"]) if manifest["chunks"] else None
-    rows_done = sum(c["rows"] for c in manifest["chunks"])
-    if chunk_no:
-        log.info("Resume từ chunk %s (%s rows đã xong)", chunk_no, f"{rows_done:,}")
+def to_json_safe(v):
+    if isinstance(v, ObjectId):
+        return str(v)
+    if isinstance(v, datetime):
+        return v.isoformat()
+    if isinstance(v, Decimal128):
+        return str(v.to_decimal())
+    if isinstance(v, dict):
+        return {clean_key(k): to_json_safe(x) for k, x in v.items()}
+    if isinstance(v, list):
+        return [to_json_safe(x) for x in v]
+    return v
 
-    source_count = col.estimated_document_count()
-    log.info("Export %s: %s docs -> gs://%s/%s/", args.source, f"{source_count:,}", args.bucket, prefix)
 
-    t0 = perf_counter()
-    exported_at = now_iso()
-    work = OUTPUT_DIR / "export_tmp"
-    work.mkdir(exist_ok=True)
+# ---------- State (resume) ----------
+def load_state() -> dict:
+    if os.path.exists(STATE_FILE):
+        with open(STATE_FILE) as f:
+            return json_util.loads(f.read())
+    return {}
 
-    while args.max_chunks is None or len(manifest["chunks"]) < args.max_chunks:
-        query = {"_id": {"$gt": last_id}} if last_id is not None else {}
-        cursor = col.find(query).sort("_id", 1).limit(args.chunk_size).batch_size(10_000)
 
-        local = work / f"part-{chunk_no:05d}.jsonl.gz"
-        n = 0
-        with gzip.open(local, "wt", encoding="utf-8", compresslevel=5) as f:
+def save_state(state: dict):
+    with open(STATE_FILE, "w") as f:
+        f.write(json_util.dumps(state, indent=2))
+
+
+def upload_with_retry(bucket, local_path: str, blob_name: str, retries: int = 3):
+    for attempt in range(1, retries + 1):
+        try:
+            bucket.blob(blob_name).upload_from_filename(local_path, timeout=900)
+            return
+        except Exception as e:
+            log.warning(f"Upload lỗi (lần {attempt}/{retries}) {blob_name}: {e}")
+            if attempt == retries:
+                raise
+            time.sleep(10 * attempt)
+
+
+# ---------- Export 1 collection ----------
+def export_collection(db, bucket, coll_name: str, state: dict):
+    coll = db[coll_name]
+    total = coll.estimated_document_count()
+    st = state.setdefault(coll_name, {"last_id": None, "part": 0, "exported": 0, "done": False})
+
+    if st["done"]:
+        log.info(f"[{coll_name}] đã export xong trước đó ({st['exported']:,} docs) -> bỏ qua")
+        return
+
+    log.info(f"[{coll_name}] bắt đầu | tổng ~{total:,} docs | resume từ part {st['part']}")
+    t0 = time.time()
+
+    while True:
+        query = {"_id": {"$gt": st["last_id"]}} if st["last_id"] is not None else {}
+        cursor = coll.find(query).sort("_id", 1).limit(PART_SIZE).batch_size(10_000)
+
+        fname = f"{coll_name}-part-{st['part']:05d}.jsonl.gz"
+        local_path = os.path.join(TMP_DIR, fname)
+        n, last_id = 0, None
+
+        with gzip.open(local_path, "wt", encoding="utf-8") as f:
             for doc in cursor:
-                f.write(json.dumps(transform(args.source, doc, args.run_id, exported_at, fields),
-                                   ensure_ascii=False))
-                f.write("\n")
+                f.write(json.dumps(to_json_safe(doc), ensure_ascii=False) + "\n")
                 last_id = doc["_id"]
                 n += 1
+
         if n == 0:
-            local.unlink(missing_ok=True)
+            os.remove(local_path)
             break
 
-        blob = bucket.blob(f"{prefix}/{local.name}")
+        blob_name = f"{GCS_PREFIX}/{coll_name}/{fname}"
+        upload_with_retry(bucket, local_path, blob_name)
+        size_mb = os.path.getsize(local_path) / 1024 / 1024
+        os.remove(local_path)
+
+        st["last_id"] = last_id
+        st["part"] += 1
+        st["exported"] += n
+        save_state(state)
+
+        pct = st["exported"] / total * 100 if total else 100
+        log.info(
+            f"[{coll_name}] part {st['part'] - 1:05d}: {n:,} docs, {size_mb:.1f}MB "
+            f"-> gs://{GCS_BUCKET}/{blob_name} | {st['exported']:,}/{total:,} ({pct:.1f}%)"
+        )
+
+        if n < PART_SIZE:
+            break
+
+    # Validation: số docs export phải khớp count trong MongoDB
+    actual = coll.count_documents({})
+    st["done"] = True
+    save_state(state)
+    status = "OK" if actual == st["exported"] else "MISMATCH"
+    log.info(
+        f"[{coll_name}] XONG trong {(time.time() - t0) / 60:.1f} phút | "
+        f"exported={st['exported']:,} | mongo={actual:,} | {status}"
+    )
+
+
+def main():
+    collections = sys.argv[1:] or ["summary", "ip_locations", "products"]
+    client = MongoClient(MONGO_URI)
+    db = client[MONGO_DB]
+    bucket = storage.Client().bucket(GCS_BUCKET)
+    state = load_state()
+
+    for name in collections:
+        if name not in db.list_collection_names():
+            log.error(f"Collection '{name}' không tồn tại trong DB '{MONGO_DB}' -> bỏ qua")
+            continue
         try:
-            blob.upload_from_filename(str(local), content_type="application/gzip", timeout=600,
-                                      if_generation_match=0)
-        except PreconditionFailed:
-            # đã upload ở lần chạy trước nhưng chết trước khi ghi manifest -> giữ file cũ
-            log.warning("%s đã tồn tại trên GCS, bỏ qua upload", blob.name)
-        local.unlink()
+            export_collection(db, bucket, name, state)
+        except Exception:
+            log.exception(f"[{name}] lỗi - chạy lại lệnh để resume")
+            raise
 
-        rows_done += n
-        manifest["chunks"].append({"file": blob.name, "rows": n, "last_id": json_util.dumps(last_id)})
-        manifest_path.write_text(json.dumps(manifest, indent=2))
-        chunk_no += 1
-        rate = rows_done / (perf_counter() - t0)
-        log.info("chunk %05d | %s rows | tổng %s/%s | %.0f rows/s",
-                 chunk_no - 1, f"{n:,}", f"{rows_done:,}", f"{source_count:,}", rate)
-
-    manifest["total_rows"] = rows_done
-    manifest_path.write_text(json.dumps(manifest, indent=2))
-    exact = col.count_documents({})
-    print("\n===== EXPORT SUMMARY =====")
-    print(f"Source             : {args.source}")
-    print(f"Mongo count        : {exact:,}")
-    print(f"Exported rows      : {rows_done:,}   {'MATCH' if rows_done == exact else 'CHƯA KHỚP'}")
-    print(f"Files              : {len(manifest['chunks'])} -> gs://{args.bucket}/{prefix}/")
-    print(f"Manifest           : {manifest_path}")
+    client.close()
 
 
 if __name__ == "__main__":
