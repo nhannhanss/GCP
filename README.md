@@ -1,4 +1,4 @@
-# Glamira Pipeline — Project 05
+# Glamira Pipeline — Project 
 
 Pipeline thu thập và làm giàu dữ liệu hành vi người dùng của Glamira (trang trang sức), phục vụ dashboard **Geographic Performance** và **Product Analysis**.
 
