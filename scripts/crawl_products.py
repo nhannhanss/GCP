@@ -26,11 +26,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from bs4 import BeautifulSoup
 from curl_cffi import requests as cf
 
-from common import OUTPUT_DIR, log, now_iso
+from common import OUTPUT_DIR, db, log, now_iso
 
 IDS_FILE = OUTPUT_DIR / "product_ids.csv"
 HOSTS_FILE = OUTPUT_DIR / "storefront_hosts.txt"
 RESULTS_FILE = OUTPUT_DIR / "products_raw.csv"
+CLEAN_FILE = OUTPUT_DIR / "products.csv"
 
 URL_TEMPLATE = "https://{host}/catalog/product/view/id/{pid}"
 # Ưu tiên store tiếng Anh để product_name/category cùng 1 ngôn ngữ (dashboard so sánh được).
