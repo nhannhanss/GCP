@@ -1,0 +1,13 @@
+version: 2
+
+sources:
+  - name: raw
+    database: project-5da95346-922b-4dc5-87b
+    schema: raw
+    tables:
+      - name: events
+        description: Raw events tu MongoDB (41M rows), load qua GCS -> Cloud Function
+      - name: ip_locations
+        description: Ket qua IP geolocation (IP2Location)
+      - name: products
+        description: Thong tin san pham crawl tu glamira

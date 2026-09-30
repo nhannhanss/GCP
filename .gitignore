@@ -10,3 +10,7 @@ data/
 credentials*.json
 service-account*.json
 .env
+glamira_dbt/target/
+glamira_dbt/dbt_packages/
+glamira_dbt/logs/
+.user.yml

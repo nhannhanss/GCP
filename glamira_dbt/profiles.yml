@@ -1,0 +1,12 @@
+glamira_dbt:
+  target: dev
+  outputs:
+    dev:
+      type: bigquery
+      method: oauth
+      project: project-5da95346-922b-4dc5-87b
+      dataset: staging
+      location: asia-southeast1
+      threads: 4
+      job_execution_timeout_seconds: 300
+      priority: interactive
