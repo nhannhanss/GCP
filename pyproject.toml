@@ -1,0 +1,13 @@
+[project]
+name = "glamira-pipeline"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "pymongo>=4.8",
+    "IP2Location>=8.10",
+    "curl-cffi>=0.11",
+    "beautifulsoup4>=4.12",
+    "google-cloud-storage>=2.18",
+    "pandas>=3.0.6",
+    "python-dotenv>=1.2.3",
+]

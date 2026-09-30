@@ -1,0 +1,82 @@
+[
+  {
+    "name": "product_id",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "product_name",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "sku",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "price",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "currency",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "category",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "image_url",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "description",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "source_url",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "host",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "crawled_at",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "success",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "http_status",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "error",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "_run_id",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "_exported_at",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  }
+]
