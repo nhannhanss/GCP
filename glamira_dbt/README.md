@@ -1,6 +1,6 @@
-# glamira_dbt – Project 07: Data Transformation & Dashboard
+# glamira_dbt –  Data Transformation & Dashboard
 
-Biến tầng raw trên BigQuery (Project 06) thành **star schema** bằng dbt, rồi dựng dashboard bán hàng trên Data Studio (Looker Studio).
+Biến tầng raw trên BigQuery  thành **star schema** bằng dbt, rồi dựng dashboard bán hàng trên Data Studio (Looker Studio).
 
 ```
 raw (Project 06)  ──►  staging (view)  ──►  core (table: fact + 6 dim)  ──►  mart (table)  ──►  Data Studio
