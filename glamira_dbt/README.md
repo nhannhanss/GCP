@@ -11,7 +11,7 @@ products                stg_products            dim_product / dim_device
 seeds: store_currency, exchange_rates
 ```
 
-- **Dashboard:** <DÁN LINK DATA STUDIO VÀO ĐÂY>
+- **Dashboard:** [https://datastudio.google.com/reporting/6331ba7a-07ed-4c65-affd-636b5199ec7d]
 - **ERD:** `docs/glamira_erd.png` (file draw.io: `docs/glamira_erd.drawio`)
 
 ## 1. Kết quả
