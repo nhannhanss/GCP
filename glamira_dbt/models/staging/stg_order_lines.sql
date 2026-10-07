@@ -20,10 +20,10 @@ WITH orders AS (
         ,o.order_time
         ,o.store_id
         ,o.store_domain
-        ,o.user_id_db
-        ,o.device_id
-        ,o.email_address
-        ,o.ip
+        ,o.customer_id_hash
+        ,o.is_registered
+        ,o.email_hash
+        ,o.ip_hash
         ,o.user_agent
         ,o.resolution
         ,REGEXP_REPLACE(JSON_VALUE(item, '$.product_id'), r'\.0+$', '')          AS product_id
@@ -53,10 +53,10 @@ SELECT
     ,l.order_time
     ,l.store_id
     ,l.store_domain
-    ,l.user_id_db
-    ,l.device_id
-    ,l.email_address
-    ,l.ip
+    ,l.customer_id_hash
+    ,l.is_registered
+    ,l.email_hash
+    ,l.ip_hash
     ,l.user_agent
     ,l.resolution
     ,l.product_id

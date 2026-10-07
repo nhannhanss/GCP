@@ -36,7 +36,7 @@ SELECT
     )                                                                           AS geo_key
     ,FARM_FINGERPRINT({{ device_natural_key('l.user_agent', 'l.resolution') }}) AS device_key
     ,COALESCE(CAST(FORMAT_DATE('%Y%m%d', DATE(l.order_time)) AS INT64), -1)     AS date_key
-    ,COALESCE(FARM_FINGERPRINT({{ customer_id_hash('l.user_id_db', 'l.device_id') }}), -1) AS customer_key
+    ,COALESCE(FARM_FINGERPRINT(l.customer_id_hash), -1)                         AS customer_key
     ,l.order_qty
     ,l.unit_price_local
     ,l.line_amount_local
@@ -46,6 +46,6 @@ SELECT
     ,l.source_event_id
 FROM lines AS l
 LEFT JOIN ip_locations AS ip
-    ON l.ip = ip.ip
+    ON l.ip_hash = ip.ip_hash
 LEFT JOIN exchange_rates AS fx
     ON l.currency_code = fx.currency_code

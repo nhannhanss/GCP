@@ -17,6 +17,12 @@ models:
         description: Host of current_url, e.g. www.glamira.co.uk.
         data_tests:
           - not_null
+      - name: customer_id_hash
+        description: Salted SHA-256 of 'user:'+user_id_db (registered) or 'device:'+device_id (guest). PII-safe customer id.
+      - name: email_hash
+        description: Salted SHA-256 of the lower-cased email (PII). NULL when no email.
+      - name: ip_hash
+        description: Salted SHA-256 of the IP address (PII).
 
   - name: stg_order_lines
     description: One row per product line in an order (grain of fact_sales_order_detail). Prices parsed from EU/US formats.
@@ -66,9 +72,10 @@ models:
                 values: ['Rings', 'Necklaces', 'Earrings', 'Bracelets', 'Sets', 'Other', 'Unknown']
 
   - name: stg_ip_locations
-    description: One row per IP with country / region / city.
+    description: One row per IP with country / region / city. The IP itself is stored only as a salted SHA-256 hash.
     columns:
-      - name: ip
+      - name: ip_hash
+        description: Salted SHA-256 of the IP address (PII). Used only to join orders to their location.
         data_tests:
           - unique
           - not_null

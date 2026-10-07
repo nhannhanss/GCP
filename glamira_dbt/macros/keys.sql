@@ -7,8 +7,8 @@
 
 {% macro customer_id_hash(user_id_db, device_id) -%}
     CASE
-        WHEN {{ user_id_db }} IS NOT NULL THEN TO_HEX(SHA256(CONCAT('user:', {{ user_id_db }})))
-        WHEN {{ device_id }} IS NOT NULL THEN TO_HEX(SHA256(CONCAT('device:', {{ device_id }})))
+        WHEN {{ user_id_db }} IS NOT NULL THEN {{ pii_hash("CONCAT('user:', " ~ user_id_db ~ ")") }}
+        WHEN {{ device_id }} IS NOT NULL THEN {{ pii_hash("CONCAT('device:', " ~ device_id ~ ")") }}
     END
 {%- endmacro %}
 

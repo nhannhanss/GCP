@@ -1,0 +1,15 @@
+version: 2
+
+models:
+  - name: mart_sales
+    description: >
+      Denormalized sales table for Looker Studio (Revenue, Geographic, Time trends, Product pages).
+      Grain = 1 product line in 1 order. Revenue in USD = SUM(line_amount_usd);
+      orders = COUNT_DISTINCT(order_id); customers = COUNT_DISTINCT(customer_key).
+    columns:
+      - name: sales_order_detail_key
+        data_tests: [unique, not_null]
+      - name: line_amount_usd
+        description: Line revenue converted to USD (2020 average rate). Use this to compare countries.
+      - name: line_amount_local
+        description: Line revenue in the store currency. Do NOT sum across different currency_code.

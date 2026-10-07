@@ -1,6 +1,6 @@
 {{ config(materialized = 'view') }}
 
--- 1 row = 1 IP address with its geolocation
+-- 1 row = 1 IP address (hashed, PII) with its geolocation
 
 WITH source AS (
     SELECT *
@@ -9,7 +9,7 @@ WITH source AS (
 
 , renamed AS (
     SELECT
-        TRIM(ip)                                     AS ip
+        {{ pii_hash('TRIM(ip)') }}                    AS ip_hash
         ,UPPER({{ clean_string('country_code') }})   AS country_code
         ,{{ clean_string('country_name') }}          AS country_name
         ,{{ clean_string('region_name') }}           AS region_name
@@ -22,5 +22,5 @@ WITH source AS (
 
 SELECT *
 FROM renamed
-WHERE ip IS NOT NULL
-QUALIFY ROW_NUMBER() OVER (PARTITION BY ip ORDER BY geo_status = 'FOUND' DESC) = 1
+WHERE ip_hash IS NOT NULL
+QUALIFY ROW_NUMBER() OVER (PARTITION BY ip_hash ORDER BY geo_status = 'FOUND' DESC) = 1

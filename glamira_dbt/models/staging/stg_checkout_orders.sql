@@ -1,6 +1,6 @@
 {{ config(materialized = 'view') }}
 
--- 1 row = 1 successful order (deduplicated, test/dev stores removed)
+-- 1 row = 1 successful order (deduplicated, test/dev stores removed). PII (email, IP, user/device id) is hashed.
 
 WITH source AS (
     SELECT *
@@ -15,10 +15,11 @@ WITH source AS (
         ,TIMESTAMP_SECONDS(SAFE_CAST(SAFE_CAST(time_stamp AS FLOAT64) AS INT64)) AS order_time
         ,{{ clean_string('store_id') }}                                         AS store_id
         ,LOWER(REGEXP_EXTRACT(current_url, r'^https?://([^/:?#]+)'))            AS store_domain
-        ,{{ clean_string('user_id_db') }}                                       AS user_id_db
-        ,{{ clean_string('device_id') }}                                        AS device_id
-        ,LOWER({{ clean_string('email_address') }})                             AS email_address
-        ,{{ clean_string('ip') }}                                               AS ip
+        -- PII is hashed here: nothing downstream of staging sees raw identifiers
+        ,{{ customer_id_hash(clean_string('user_id_db'), clean_string('device_id')) }} AS customer_id_hash
+        ,{{ clean_string('user_id_db') }} IS NOT NULL                           AS is_registered
+        ,{{ pii_hash('LOWER(' ~ clean_string('email_address') ~ ')') }}         AS email_hash
+        ,{{ pii_hash(clean_string('ip')) }}                                     AS ip_hash
         ,{{ clean_string('user_agent') }}                                       AS user_agent
         ,{{ clean_string('resolution') }}                                       AS resolution
         ,payload

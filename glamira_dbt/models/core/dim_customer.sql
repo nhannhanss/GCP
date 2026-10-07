@@ -4,10 +4,10 @@
 
 WITH customers AS (
     SELECT
-        {{ customer_id_hash('user_id_db', 'device_id') }}   AS customer_id_hash
-        ,LOGICAL_OR(user_id_db IS NOT NULL)                 AS is_registered
+        customer_id_hash
+        ,LOGICAL_OR(is_registered)      AS is_registered
     FROM {{ ref('stg_checkout_orders') }}
-    WHERE COALESCE(user_id_db, device_id) IS NOT NULL
+    WHERE customer_id_hash IS NOT NULL
     GROUP BY customer_id_hash
 )
 
