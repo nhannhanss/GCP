@@ -1,0 +1,90 @@
+version: 2
+
+models:
+  - name: stg_checkout_orders
+    description: One row per successful order. Duplicated events (same order_id) and orders from stage/dev/local stores are removed.
+    columns:
+      - name: order_id
+        description: Order number, trailing '.0' removed.
+        data_tests:
+          - unique
+          - not_null
+      - name: order_time
+        description: Order timestamp (UTC) from time_stamp.
+        data_tests:
+          - not_null
+      - name: store_domain
+        description: Host of current_url, e.g. www.glamira.co.uk.
+        data_tests:
+          - not_null
+
+  - name: stg_order_lines
+    description: One row per product line in an order (grain of fact_sales_order_detail). Prices parsed from EU/US formats.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: ['order_id', 'line_number']
+    columns:
+      - name: product_id
+        data_tests:
+          - not_null
+      - name: order_qty
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: unit_price_local
+        description: Unit price in the store's own currency.
+        data_tests:
+          - not_null:
+              config:
+                severity: warn
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: currency_code
+        description: ISO 4217 code, taken from the store domain (seed store_currency).
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('exchange_rates')
+                field: currency_code
+
+  - name: stg_products
+    description: One row per crawled product, with a grouped category.
+    columns:
+      - name: product_id
+        data_tests:
+          - unique
+          - not_null
+      - name: category_group_name
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Rings', 'Necklaces', 'Earrings', 'Bracelets', 'Sets', 'Other', 'Unknown']
+
+  - name: stg_ip_locations
+    description: One row per IP with country / region / city.
+    columns:
+      - name: ip
+        data_tests:
+          - unique
+          - not_null
+
+seeds:
+  - name: store_currency
+    description: Currency and market country of each real store domain.
+    columns:
+      - name: store_domain
+        data_tests:
+          - unique
+          - not_null
+  - name: exchange_rates
+    description: Approximate 2020 annual average exchange rates (USD per 1 unit of currency).
+    columns:
+      - name: currency_code
+        data_tests:
+          - unique
+          - not_null

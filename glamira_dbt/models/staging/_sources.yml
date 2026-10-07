@@ -4,10 +4,11 @@ sources:
   - name: raw
     database: project-5da95346-922b-4dc5-87b
     schema: raw
+    description: Raw layer loaded in Project 06 (MongoDB -> GCS -> Cloud Function -> BigQuery). Every column is STRING.
     tables:
       - name: events
-        description: Raw events tu MongoDB (41M rows), load qua GCS -> Cloud Function
+        description: Behaviour events from MongoDB (~41M rows). cart_products lives inside the JSON string `payload`.
       - name: ip_locations
-        description: Ket qua IP geolocation (IP2Location)
+        description: IP2Location lookup result, one row per IP.
       - name: products
-        description: Thong tin san pham crawl tu glamira
+        description: Product info crawled from glamira websites, one row per product_id.

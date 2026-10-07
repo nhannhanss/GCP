@@ -1,0 +1,107 @@
+version: 2
+
+models:
+  - name: dim_date
+    description: Calendar dimension (When). One row per day of every year that has orders; date_key = YYYYMMDD; -1 = Unknown.
+    columns:
+      - name: date_key
+        data_tests: [unique, not_null]
+
+  - name: dim_store
+    description: Store dimension (Where/How). One row per store_id; a domain can have several store_ids (language versions).
+    columns:
+      - name: store_key
+        data_tests: [unique, not_null]
+      - name: currency_code
+        description: Currency used by the store's website (from seed store_currency).
+
+  - name: dim_geo
+    description: Geography dimension (Where) at city level, from IP geolocation. IPs are not stored.
+    columns:
+      - name: geo_key
+        data_tests: [unique, not_null]
+      - name: geo_level
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['city', 'region', 'country', 'unknown']
+
+  - name: dim_product
+    description: Product dimension (What). Every product_id ordered, enriched with crawled info when the crawl succeeded.
+    columns:
+      - name: product_key
+        data_tests: [unique, not_null]
+      - name: category_group_name
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Rings', 'Necklaces', 'Earrings', 'Bracelets', 'Sets', 'Other', 'Unknown']
+
+  - name: dim_device
+    description: Device dimension (How). Device type parsed from user_agent + screen resolution.
+    columns:
+      - name: device_key
+        data_tests: [unique, not_null]
+      - name: device_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Mobile', 'Tablet', 'Desktop', 'Unknown']
+
+  - name: dim_customer
+    description: Customer dimension (Who). Registered = user_id_db, guest = device_id; only a SHA-256 hash is stored.
+    columns:
+      - name: customer_key
+        data_tests: [unique, not_null]
+      - name: customer_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Registered', 'Guest', 'Unknown']
+
+  - name: fact_sales_order_detail
+    description: Sales fact. Grain = 1 product line in 1 successful order (checkout_success).
+    columns:
+      - name: sales_order_detail_key
+        data_tests: [unique, not_null]
+      - name: store_key
+        data_tests:
+          - relationships:
+              arguments: {to: ref('dim_store'), field: store_key}
+      - name: product_key
+        data_tests:
+          - relationships:
+              arguments: {to: ref('dim_product'), field: product_key}
+      - name: geo_key
+        data_tests:
+          - relationships:
+              arguments: {to: ref('dim_geo'), field: geo_key}
+      - name: device_key
+        data_tests:
+          - relationships:
+              arguments: {to: ref('dim_device'), field: device_key}
+      - name: date_key
+        data_tests:
+          - relationships:
+              arguments: {to: ref('dim_date'), field: date_key}
+      - name: customer_key
+        data_tests:
+          - relationships:
+              arguments: {to: ref('dim_customer'), field: customer_key}
+      - name: order_qty
+        description: Quantity of the product in the order.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 1}
+      - name: line_amount_local
+        description: order_qty x unit_price_local, in the store currency.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 0}
+      - name: line_amount_usd
+        description: line_amount_local converted to USD with the 2020 average rate (seed exchange_rates).
+        data_tests:
+          - not_null:
+              config:
+                severity: warn
