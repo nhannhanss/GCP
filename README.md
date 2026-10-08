@@ -68,7 +68,3 @@ Tải IP2Location LITE DB5 (file `.BIN`) từ [lite.ip2location.com](https://lit
 
 Crawler có rate limit, retry và resume từ điểm dừng: chạy lại lệnh 4 sẽ bỏ qua các product đã crawl.
 
-## Lưu ý
-
-- **Stop VM** trên GCP Console sau khi chạy xong để tránh tốn credit.
-- Không commit `.env`, credentials JSON, file `.BIN` và thư mục `output/`.
