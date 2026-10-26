@@ -1,0 +1,2 @@
+sd incremental trong fact
+thêm 2 model currency và 1 bảng fact ..
