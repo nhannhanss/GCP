@@ -59,6 +59,39 @@ models:
               arguments:
                 values: ['Registered', 'Guest', 'Unknown']
 
+  - name: dim_currency
+    description: Currency dimension (How). One row per ISO 4217 currency used by a store.
+    columns:
+      - name: currency_key
+        data_tests: [unique, not_null]
+      - name: currency_code
+        description: ISO 4217 code, e.g. EUR, GBP.
+
+  - name: fact_exchange_rate_usd
+    description: >
+      Exchange-rate fact. Grain = 1 currency x 1 calendar day. exchange_rate_to_usd = USD value of 1 unit.
+      Source today is one approximate 2020 average per currency (same value every day).
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: ['date_key', 'currency_key']
+    columns:
+      - name: exchange_rate_key
+        data_tests: [unique, not_null]
+      - name: date_key
+        data_tests:
+          - relationships:
+              arguments: {to: ref('dim_date'), field: date_key}
+      - name: currency_key
+        data_tests:
+          - relationships:
+              arguments: {to: ref('dim_currency'), field: currency_key}
+      - name: exchange_rate_to_usd
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 0, inclusive: false}
+
   - name: fact_sales_order_detail
     description: Sales fact. Grain = 1 product line in 1 successful order (checkout_success).
     columns:
@@ -88,6 +121,10 @@ models:
         data_tests:
           - relationships:
               arguments: {to: ref('dim_customer'), field: customer_key}
+      - name: currency_key
+        data_tests:
+          - relationships:
+              arguments: {to: ref('dim_currency'), field: currency_key}
       - name: order_qty
         description: Quantity of the product in the order.
         data_tests:
@@ -100,7 +137,7 @@ models:
           - dbt_utils.accepted_range:
               arguments: {min_value: 0}
       - name: line_amount_usd
-        description: line_amount_local converted to USD with the 2020 average rate (seed exchange_rates).
+        description: line_amount_local x exchange_rate_to_usd of the order date (fact_exchange_rate_usd).
         data_tests:
           - not_null:
               config:

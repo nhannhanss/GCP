@@ -36,4 +36,6 @@ seeds:
     exchange_rates:
       +column_types:
         currency_code: string
+        currency_name: string
+        currency_symbol: string
         usd_per_unit: numeric

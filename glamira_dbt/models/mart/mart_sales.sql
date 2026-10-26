@@ -53,6 +53,7 @@ SELECT
     ,f.unit_price_local
     ,f.line_amount_local
     ,f.currency_code
+    ,cur.currency_name
     ,f.line_amount_usd
 FROM {{ ref('fact_sales_order_detail') }} AS f
 LEFT JOIN {{ ref('dim_date') }} AS d
@@ -67,3 +68,5 @@ LEFT JOIN {{ ref('dim_customer') }} AS c
     ON f.customer_key = c.customer_key
 LEFT JOIN {{ ref('dim_device') }} AS v
     ON f.device_key = v.device_key
+LEFT JOIN {{ ref('dim_currency') }} AS cur
+    ON f.currency_key = cur.currency_key

@@ -6,6 +6,7 @@
 }}
 
 -- Grain: 1 row = 1 product line in 1 successful order.
+-- line_amount_usd uses the rate of the order's own day (fact_exchange_rate_usd).
 -- Surrogate keys are computed with the same expressions as the dims; a key that cannot be resolved = -1 (Unknown row).
 
 WITH lines AS (
@@ -19,8 +20,12 @@ WITH lines AS (
 )
 
 , exchange_rates AS (
-    SELECT *
-    FROM {{ ref('exchange_rates') }}
+    -- daily rate per currency
+    SELECT
+        date_key
+        ,currency_code
+        ,exchange_rate_to_usd
+    FROM {{ ref('fact_exchange_rate_usd') }}
 )
 
 SELECT
@@ -37,10 +42,11 @@ SELECT
     ,FARM_FINGERPRINT({{ device_natural_key('l.user_agent', 'l.resolution') }}) AS device_key
     ,COALESCE(CAST(FORMAT_DATE('%Y%m%d', DATE(l.order_time)) AS INT64), -1)     AS date_key
     ,COALESCE(FARM_FINGERPRINT(l.customer_id_hash), -1)                         AS customer_key
+    ,COALESCE(FARM_FINGERPRINT(l.currency_code), -1)                            AS currency_key
     ,l.order_qty
     ,l.unit_price_local
     ,l.line_amount_local
-    ,CAST(ROUND(l.line_amount_local * fx.usd_per_unit, 2) AS NUMERIC)          AS line_amount_usd
+    ,CAST(ROUND(l.line_amount_local * fx.exchange_rate_to_usd, 2) AS NUMERIC)   AS line_amount_usd
     ,l.currency_code
     ,l.order_time
     ,l.source_event_id
@@ -48,4 +54,5 @@ FROM lines AS l
 LEFT JOIN ip_locations AS ip
     ON l.ip_hash = ip.ip_hash
 LEFT JOIN exchange_rates AS fx
-    ON l.currency_code = fx.currency_code
+    ON CAST(FORMAT_DATE('%Y%m%d', DATE(l.order_time)) AS INT64) = fx.date_key
+    AND l.currency_code = fx.currency_code
