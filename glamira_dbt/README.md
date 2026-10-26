@@ -31,12 +31,14 @@ seeds: store_currency, exchange_rates
 | Bảng | Trả lời | Natural key | Ghi chú |
 |---|---|---|---|
 | `fact_sales_order_detail` | Bao nhiêu? | `order_id` + `line_number` | `order_qty`, `unit_price_local`, `line_amount_local`, `line_amount_usd`; partition theo tháng `order_time`, cluster `store_key, product_key` |
+| `fact_exchange_rate_usd` | Tỷ giá | `date_key` + `currency_key` | 1 dòng = 1 loại tiền × 1 ngày; `fact_sales_order_detail` lấy tỷ giá đúng ngày đặt hàng để tính `line_amount_usd` |
 | `dim_date` | When | `full_date` | `date_key` = YYYYMMDD |
 | `dim_customer` | Who | `customer_id_hash` | Registered = `user_id_db`, Guest = `device_id`, chỉ lưu hash |
 | `dim_product` | What | `product_id` | `category_group_name` gộp ~30 category thành 7 nhóm |
 | `dim_geo` | Where | country + region + city | Mức thành phố, không lưu IP |
 | `dim_store` | Where / How | `store_id` | 1 domain có thể có nhiều store_id (bản ngôn ngữ) |
 | `dim_device` | How | device_type + resolution + is_bot | Tách từ `user_agent` |
+| `dim_currency` | How | `currency_code` | Mã ISO, tên, ký hiệu của 41 loại tiền |
 
 - Surrogate key: `FARM_FINGERPRINT(natural_key)` (INT64). Dim và fact dùng **chung macro** sinh natural key nên key luôn khớp.
 - Mỗi dim có dòng **Unknown** (`key = -1`, `is_unknown = TRUE`) → fact không bao giờ mất dòng khi join.
